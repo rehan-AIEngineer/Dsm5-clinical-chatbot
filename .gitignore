@@ -1,0 +1,20 @@
+# Environment variables (API keys, DB credentials)
+.env
+
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Data files (large, regenerable)
+data/chunks.json
+data/chunks_with_embeddings.json
+data/*.pdf
+
+# Node/React
+frontend/node_modules/
+frontend/dist/
+
+# OS files
+.DS_Store
+Thumbs.db
