@@ -1,32 +1,21 @@
 """
 llm.py
 ------
-Handles LLM answer generation with provider routing:
-    Gemini (primary) -> OpenRouter (fallback 1) -> Hugging Face (fallback 2)
+Handles LLM answer generation with Gemini (primary).
 
-Switches to the next provider when the current one fails due to:
-    - quota/rate-limit exhausted
-    - server down / timeout / connection error
-
-Applies a Zero-Shot Chain-of-Thought prompt template before sending to
-whichever provider ends up handling the request.
+Simplified version: only Gemini remains.
+Expansion query function stays.
 """
 
 import os
-import requests
 import google.generativeai as genai
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# ---- Provider credentials ----
+# ---- Gemini credentials ----
 GEMINI_KEYS = [k.strip() for k in os.getenv("GEMINI_API_KEYS", "").split(",") if k.strip()]
-OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY", "")
-HF_KEY = os.getenv("HF_API_KEY", "")
-
 GEMINI_MODEL = "models/gemini-flash-latest"
-OPENROUTER_MODEL = "openrouter/auto"
-HF_MODEL = "meta-llama/Llama-3.3-70B-Instruct"
 
 _gemini_key_index = 0
 
@@ -36,54 +25,82 @@ _gemini_key_index = 0
 # --------------------------------------------------------------------------
 
 def _is_switchable_error(e: Exception) -> bool:
-    """True if this error means 'try the next provider/key'."""
+    """True if this error means 'try the next key'."""
     msg = str(e).lower()
     triggers = [
-        "quota", "rate limit", "429", "resourceexhausted",
-        "timeout", "timed out", "connection", "503", "502", "500",
-        "unavailable", "server error", "404", "not found",
+        "quota",
+        "rate limit",
+        "429",
+        "resourceexhausted",
+        "timeout",
+        "timed out",
+        "connection",
+        "503",
+        "502",
+        "500",
+        "unavailable",
+        "server error",
     ]
     return any(t in msg for t in triggers)
 
 
 # --------------------------------------------------------------------------
-# Zero-Shot Chain-of-Thought prompt builder
+# Prompt building
 # --------------------------------------------------------------------------
 
-def build_cot_prompt(query: str, context_chunks: list) -> str:
+def build_cot_prompt(query: str, context_chunks: list):
     context_text = "\n\n".join(
         f"[{c['disorder_name']} — {c['section_name']}]\n{c['text']}"
         for c in context_chunks
     )
 
-    prompt = f"""You are a compassionate clinical reference assistant. You answer strictly from the DSM-5-TR context provided below, but you also communicate with warmth and empathy — especially when the question reflects personal worry (e.g., about oneself, a friend, or a family member).
-Context:
+    prompt = f"""
+You are an empathetic, supportive, and clinically knowledgeable AI assistant designed to help caregivers navigating mental health challenges with loved ones. You ground your diagnostic knowledge in the DSM-5-TR.
+
+TONE & EMPATHY GUIDELINES:
+
+1. Always lead with genuine empathy and emotional validation before diving into diagnostic criteria.
+2. Avoid bulleted lists of intake questions. Ask no more than ONE or TWO gentle clarifying questions per response.
+3. Use warm, accessible language. Avoid sounding like a rigid textbook or search engine.
+
+RAG & DIAGNOSTIC GUIDELINES:
+
+1. NEVER tell the user "the provided context does not contain" or expose your internal document limitations.
+2. When discussing psychotic symptoms, always account for:
+   - Timeline rules (e.g., 6 months for schizophrenia vs 1 month for brief psychosis).
+   - Negative symptoms (flat affect, avolition, alogia).
+   - Substance exclusion (e.g., cannabis or medication effects).
+3. Always frame diagnostic criteria as possibilities for a doctor to evaluate, not a definitive diagnosis.
+
+=========================
+DSM-5-TR CONTEXT
+=========================
+
 {context_text}
 
-Question: {query}
+=========================
+USER QUESTION
+=========================
 
-Think through this step by step internally (do not show this thinking in your response):
-1. Check if the question reflects personal worry or concern (about the person themselves, a friend, or a family member).
-2. Identify which part(s) of the context are relevant to the question.
-3. Reason about what the context actually says about that.
-4. If the question compares two disorders/sections, reason about each separately first, then compare.
+{query}
 
-Do NOT show your reasoning, step numbers, or any "Step 1/Step 2" text in your response. Output ONLY the final answer directly, with no preamble like "Based on the context" or "Here is my reasoning."
+=========================
+FINAL ANSWER
+=========================
+"""
 
-If the question reflected personal worry (step 1), begin your final answer with one brief, warm, non-clinical sentence acknowledging that concern, then give the clinical information. If appropriate, gently suggest consulting a mental health professional for personal situations.
-
-Final Answer:"""
     return prompt
 
 
 # --------------------------------------------------------------------------
-# Provider 1: Gemini
+# Provider: Gemini (with multiple keys rotation)
 # --------------------------------------------------------------------------
 
 def _call_gemini(prompt: str) -> str:
     global _gemini_key_index
     if not GEMINI_KEYS:
         raise RuntimeError("Gemini quota exhausted: no API keys configured")
+    
     last_error = None
     for _ in range(len(GEMINI_KEYS)):
         try:
@@ -99,55 +116,67 @@ def _call_gemini(prompt: str) -> str:
                 continue
             raise
 
-    raise RuntimeError(f"All Gemini keys failed: {last_error}")
+    raise RuntimeError(f"All Gemini keys failed. Last error: {last_error}")
 
 
 # --------------------------------------------------------------------------
-# Provider 2: OpenRouter
+# Disclaimer Logic
 # --------------------------------------------------------------------------
 
-def _call_openrouter(prompt: str) -> str:
-    if not OPENROUTER_KEY:
-        raise RuntimeError("OpenRouter quota exhausted: no API key configured")
+def _needs_disclaimer(query: str) -> bool:
+    """
+    Returns True if the response needs a disclaimer.
+    Only for personal/assessment questions with symptoms, NOT for informational queries.
+    """
+    informational_keywords = [
+        "what is", "define", "explain", "symptoms of", "criteria for",
+        "prevalence", "difference between", "diagnostic criteria"
+    ]
+    
+    query_lower = query.lower()
+    
+    for kw in informational_keywords:
+        if query_lower.startswith(kw) or f" {kw}" in query_lower:
+            return False
+    
+    symptom_keywords = [
+        "sad", "depressed", "anxiety", "panic", "worried", "stress",
+        "fear", "hopeless", "worthless", "sleep", "insomnia", "fatigue",
+        "tired", "appetite", "hallucination", "mania", "suicidal", "self harm",
+        "udaas", "ghabrahat", "fikr", "tension", "neend",
+        "thakan", "bhook", "bechaini", "dil nahi lagta", "zindagi ka koi maqsad"
+    ]
+    
+    for kw in symptom_keywords:
+        if kw in query_lower:
+            return True
+    
+    personal_keywords = ["my", "me", "i", "have", "feel", "am", "been"]
+    for kw in personal_keywords:
+        if kw in query_lower.split():
+            return True
+    
+    return False
 
-    resp = requests.post(
-        url="https://openrouter.ai/api/v1/chat/completions",
-        headers={"Authorization": f"Bearer {OPENROUTER_KEY}"},
-        json={
-            "model": OPENROUTER_MODEL,
-            "messages": [{"role": "user", "content": prompt}],
-        },
-        timeout=30,
-    )
-    if resp.status_code != 200:
-        raise RuntimeError(f"OpenRouter error {resp.status_code}: {resp.text}")
-    return resp.json()["choices"][0]["message"]["content"]
+
+def _needs_emergency_disclaimer(query: str) -> bool:
+    """
+    Returns True if this is a high-risk/suicidal query.
+    """
+    EMERGENCY_KEYWORDS = [
+        "suicide", "suicidal", "kill myself", "end my life",
+        "hurt myself", "self harm", "i want to die",
+        "life is not worth living", "better off without me",
+        "khudkushi", "mar jana", "zindagi ka koi maqsad nahi", "khud ko nuqsan",
+    ]
+    query_lower = query.lower()
+    return any(kw in query_lower for kw in EMERGENCY_KEYWORDS)
 
 
 # --------------------------------------------------------------------------
-# Provider 3: Hugging Face
+# Public entry point
 # --------------------------------------------------------------------------
 
-def _call_huggingface(prompt: str) -> str:
-    if not HF_KEY:
-        raise RuntimeError("Hugging Face quota exhausted: no API key configured")
-
-    resp = requests.post(
-        url="https://router.huggingface.co/v1/chat/completions",
-        headers={"Authorization": f"Bearer {HF_KEY}"},
-        json={
-            "model": HF_MODEL,
-            "messages": [{"role": "user", "content": prompt}],
-        },
-        timeout=30,
-    )
-    if resp.status_code != 200:
-        raise RuntimeError(f"Hugging Face error {resp.status_code}: {resp.text}")
-    return resp.json()["choices"][0]["message"]["content"]
-
-# --------------------------------------------------------------------------
-# Public entry point: routing across all 3 providers
-# --------------------------------------------------------------------------
 def _strip_reasoning(text: str) -> str:
     """Removes any leaked reasoning/step markers, keeping only the final answer."""
     markers = ["Final Answer:", "Answer:", "**Final Answer:**", "**Answer:**"]
@@ -158,36 +187,45 @@ def _strip_reasoning(text: str) -> str:
 
 
 def generate_answer(query: str, context_chunks: list) -> str:
+    """Generate answer using Gemini (with multi-key rotation)."""
+    if not GEMINI_KEYS:
+        return "Error: Gemini API key not configured. Please set GEMINI_API_KEYS in .env"
+    
+    if not context_chunks:
+        return "I couldn't find relevant information in the DSM-5-TR reference for this question."
+
     prompt = build_cot_prompt(query, context_chunks)
+    
+    try:
+        raw = _call_gemini(prompt)
+        answer = _strip_reasoning(raw)
+        
+        # ---- Add disclaimer (only if needed and not already present) ----
+        if _needs_disclaimer(query):
+            disclaimer = "\n\n---\n📌 **Note:** I am an AI educational assistant based on DSM-5-TR. This information is for educational purposes only and is not a substitute for a qualified psychiatrist's or clinical psychologist's diagnosis or professional advice."
+            
+            if _needs_emergency_disclaimer(query):
+                disclaimer = "\n\n⚠️ **Emergency Notice:** I am an AI educational assistant and not a substitute for emergency or crisis care. If you are having thoughts of harming yourself or others, please contact emergency services immediately or reach out to a crisis helpline."
+            
+            # ✅ Check if disclaimer already exists (prevent duplicate)
+            if "I am an AI educational assistant" not in answer:
+                answer += disclaimer
+        
+        return answer
+        
+    except Exception as e:
+        return f"Error generating response: {str(e)}"
 
-    providers = [
-        ("Gemini", _call_gemini),
-        ("OpenRouter", _call_openrouter),
-        ("Hugging Face", _call_huggingface),
-    ]
 
-    last_error = None
-    for name, fn in providers:
-        try:
-            raw = fn(prompt)
-            return _strip_reasoning(raw)
-        except Exception as e:
-            last_error = e
-            if _is_switchable_error(e):
-                print(f"{name} failed ({e}), switching to next provider...")
-                continue
-            raise
-
-    raise RuntimeError(f"All providers failed. Last error: {last_error}")
-
-
+# --------------------------------------------------------------------------
+# Query Expansion (Stays as is)
+# --------------------------------------------------------------------------
 
 def expand_to_clinical_terms(query: str) -> str:
     """
     Rewrites a casual/colloquial symptom description into clinical DSM-5
     terminology, to improve embedding similarity against clinical text.
-    Tries Gemini first, falls back to OpenRouter, then to the original
-    query if both fail.
+    Uses Gemini for expansion.
     """
     prompt = f"""Rewrite the following person's description of their experience into formal clinical/psychiatric terminology (DSM-5 style terms only). Output ONLY a short comma-separated list of clinical terms — no sentences, no explanation.
 
@@ -195,26 +233,18 @@ Person's description: "{query}"
 
 Clinical terms:"""
 
-    # Try Gemini first
     try:
         if not GEMINI_KEYS:
-            raise RuntimeError("no Gemini keys configured")
+            print("DEBUG - No Gemini keys configured for expansion")
+            return query
+        
         genai.configure(api_key=GEMINI_KEYS[_gemini_key_index])
         model = genai.GenerativeModel(GEMINI_MODEL)
         response = model.generate_content(prompt)
         expanded = response.text.strip()
         print(f"DEBUG - Expanded query (Gemini): {expanded}")
         return f"{query} ({expanded})"
+        
     except Exception as e:
         print(f"DEBUG - Gemini expansion failed: {e}")
-
-    # Fallback: OpenRouter
-    try:
-        expanded = _call_openrouter(prompt)
-        print(f"DEBUG - Expanded query (OpenRouter): {expanded}")
-        return f"{query} ({expanded})"
-    except Exception as e:
-        print(f"DEBUG - OpenRouter expansion failed: {e}")
-
-    # Both failed — use original query unmodified
-    return query
+        return query

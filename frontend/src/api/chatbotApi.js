@@ -1,6 +1,9 @@
-// api/chatbotApi.js
+// api/chatbotApi.js  
 
-const API_BASE_URL = "https://dsm5-rag-chatbot-production.up.railway.app";
+// FOR PRODUCTION, UNCOMMENT THE FOLLOWING LINE AND SET THE API BASE URL
+// const API_BASE_URL = "https://dsm5-rag-chatbot-production.up.railway.app";
+
+const API_BASE_URL = "http://localhost:8000"; // FOR LOCAL DEVELOPMENT
 
 export async function createNewChat() {
   const res = await fetch(`${API_BASE_URL}/new-chat`, {
