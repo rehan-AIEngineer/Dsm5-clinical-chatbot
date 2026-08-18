@@ -24,16 +24,19 @@ export default function ChatArea({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
-  // Step-by-step live progress timer while pipeline is running
+  // Step-by-step live progress timer matched to realistic agent execution times
   useEffect(() => {
     if (!loading) {
       setActiveStep(1);
       return;
     }
     setActiveStep(1);
-    const t1 = setTimeout(() => setActiveStep(2), 1200);
-    const t2 = setTimeout(() => setActiveStep(3), 2800);
-    const t3 = setTimeout(() => setActiveStep(4), 4500);
+    // Agent 1: Guardrail (~2s)
+    const t1 = setTimeout(() => setActiveStep(2), 2200);
+    // Agent 2: Clinical & Grief Reasoning Engine + RAG (~20s)
+    const t2 = setTimeout(() => setActiveStep(3), 22000);
+    // Agent 3: Empathy & Persona Synthesizer (~18s)
+    const t3 = setTimeout(() => setActiveStep(4), 40000);
 
     return () => {
       clearTimeout(t1);
@@ -63,17 +66,18 @@ export default function ChatArea({
       {/* Main Chat Stream */}
       <div className="chat-area">
         {/* ── Crisis support banner — always visible ── */}
+        {/* ── Safe Space Banner ── */}
         <div className="crisis-banner">
-          <span className="crisis-banner-icon">🆘</span>
+          <span className="crisis-banner-icon">🌿</span>
           <p className="crisis-banner-text">
-            <strong>If you or someone is in immediate danger, please reach out now.</strong>
-            {" "}Umang helpline: <strong>0311-7786264</strong> · Emergency rescue: <strong>1122</strong> · National Youth Helpline: <strong>0800-69457</strong>
+            <strong>Welcome to your safe space:</strong> Share your thoughts, symptoms, or feelings freely — every conversation is private and non-judgmental.
           </p>
         </div>
 
+
         {/* ── Chat header with top-right Zone C toggle ── */}
         <div className="chat-header">
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ maxWidth: "320px", minWidth: 0 }}>
             <h1 className="chat-title">
               {chatTitle && chatTitle !== "New chat" && chatTitle !== "New conversation"
                 ? chatTitle
@@ -81,6 +85,8 @@ export default function ChatArea({
             </h1>
             <span className="chat-subtitle">Confidential · Clinical</span>
           </div>
+
+          <div style={{ flex: 1 }} />
 
           {/* Top-Right Zone C Toggle Button */}
           <button
@@ -225,26 +231,26 @@ export default function ChatArea({
 
                 {/* Step 1 */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "11px", color: activeStep >= 1 ? "#4ADE80" : "#64748B" }}>
-                  <span>🔍 Step 1: Agent 1 Guardrail</span>
+                  <span>🔍 AGENT 1: Intent & Safety Guardrail</span>
                   <span>{activeStep > 1 ? "✅ Complete" : activeStep === 1 ? "⏳ Evaluating Risk..." : "Waiting..."}</span>
                 </div>
 
                 {/* Step 2 */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "11px", color: activeStep >= 2 ? "#38BDF8" : "#64748B" }}>
-                  <span>🧠 Step 2: Agent 2 DSM-5 RAG Retrieval</span>
-                  <span>{activeStep > 2 ? "✅ Complete" : activeStep === 2 ? "⏳ Fetching Vector Chunks..." : "Waiting..."}</span>
+                  <span>🧠 AGENT 2: Clinical & Grief Reasoning Engine</span>
+                  <span>{activeStep > 2 ? "✅ Complete" : activeStep === 2 ? "⏳ Reasoning & Vector RAG..." : "Waiting..."}</span>
                 </div>
 
                 {/* Step 3 */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "11px", color: activeStep >= 3 ? "#C084FC" : "#64748B" }}>
-                  <span>❤️ Step 3: Agent 3 Empathy Draft</span>
+                  <span>❤️ AGENT 3: Empathy & Persona Synthesizer</span>
                   <span>{activeStep > 3 ? "✅ Complete" : activeStep === 3 ? "⏳ Synthesizing Response..." : "Waiting..."}</span>
                 </div>
 
                 {/* Step 4 */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "11px", color: activeStep >= 4 ? "#4ADE80" : "#64748B" }}>
-                  <span>✅ Step 4: Agent 4 Safety Audit</span>
-                  <span>{activeStep >= 4 ? "⏳ Auditing Hotline & Tone..." : "Waiting..."}</span>
+                  <span>✅ AGENT 4: Safety & Compliance Auditor</span>
+                  <span>{activeStep >= 4 ? "⏳ Auditing Safety & Compliance..." : "Waiting..."}</span>
                 </div>
               </div>
             )}
@@ -259,7 +265,7 @@ export default function ChatArea({
                 {/* Agent 1 */}
                 <div style={{ background: "#0F172A", border: "1px solid #334155", borderRadius: "8px", padding: "12px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
-                    <strong style={{ fontSize: "12px", color: "#4ADE80" }}>🔍 Agent 1: Guardrail</strong>
+                    <strong style={{ fontSize: "12px", color: "#4ADE80" }}>🔍 AGENT 1: Intent & Safety Guardrail</strong>
                     <span style={{ fontSize: "10px", color: "#94A3B8", fontFamily: "monospace" }}>{debugData.metrics?.agent1_time_ms || 0} ms</span>
                   </div>
                   <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", margin: "4px 0" }}>
@@ -282,7 +288,7 @@ export default function ChatArea({
                 {/* Agent 2 */}
                 <div style={{ background: "#0F172A", border: "1px solid #334155", borderRadius: "8px", padding: "12px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
-                    <strong style={{ fontSize: "12px", color: "#38BDF8" }}>🧠 Agent 2: Clinical Engine</strong>
+                    <strong style={{ fontSize: "12px", color: "#38BDF8" }}>🧠 AGENT 2: Clinical & Grief Reasoning Engine</strong>
                     <span style={{ fontSize: "10px", color: "#94A3B8", fontFamily: "monospace" }}>{debugData.metrics?.agent2_time_ms || 0} ms</span>
                   </div>
                   <pre style={{ fontSize: "10px", fontFamily: "monospace", color: "#7DD3FC", background: "#1E293B", padding: "8px", borderRadius: "4px", overflowX: "auto", maxHeight: "140px" }}>
@@ -293,7 +299,7 @@ export default function ChatArea({
                 {/* Agent 3 */}
                 <div style={{ background: "#0F172A", border: "1px solid #334155", borderRadius: "8px", padding: "12px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
-                    <strong style={{ fontSize: "12px", color: "#C084FC" }}>❤️ Agent 3: Empathy Synthesizer</strong>
+                    <strong style={{ fontSize: "12px", color: "#C084FC" }}>❤️ AGENT 3: Empathy & Persona Synthesizer</strong>
                     <span style={{ fontSize: "10px", color: "#94A3B8", fontFamily: "monospace" }}>{debugData.metrics?.agent3_time_ms || 0} ms</span>
                   </div>
                   <div style={{ fontSize: "11px", color: "#CBD5E1", background: "#1E293B", padding: "8px", borderRadius: "4px", maxHeight: "100px", overflowY: "auto" }}>
@@ -304,7 +310,7 @@ export default function ChatArea({
                 {/* Agent 4 */}
                 <div style={{ background: "#0F172A", border: "1px solid #334155", borderRadius: "8px", padding: "12px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
-                    <strong style={{ fontSize: "12px", color: "#4ADE80" }}>✅ Agent 4: Safety Auditor</strong>
+                    <strong style={{ fontSize: "12px", color: "#4ADE80" }}>✅ AGENT 4: Safety & Compliance Auditor</strong>
                     <span style={{ fontSize: "10px", color: "#94A3B8", fontFamily: "monospace" }}>{debugData.metrics?.agent4_time_ms || 0} ms</span>
                   </div>
                   <div style={{ fontSize: "11px", color: "#86EFAC", background: "#1E293B", padding: "8px", borderRadius: "4px", maxHeight: "100px", overflowY: "auto" }}>

@@ -8,17 +8,41 @@ Orchestrates the full RAG pipeline as a LangGraph workflow:
 Handles: single disorder+section, single disorder (full or specific),
 disorder-to-disorder comparison, section-to-section comparison (same
 disorder), and general fallback queries.
+
+Dependency note:
+    pip install sentence-transformers
+    (adds cross-encoder reranking via BAAI/bge-reranker-base)
 """
 
 import re
+import logging
 import difflib
 from typing import TypedDict, List, Optional
 
 from langgraph.graph import StateGraph, END
+from sentence_transformers import CrossEncoder
 
 from app.vectorstore import get_connection
 from app.embedder import embed_batch
-from app.llm import generate_answer
+from app.llm import generate_answer, generate_general_response
+
+logger = logging.getLogger(__name__)
+
+# --------------------------------------------------------------------------
+# Cross-encoder reranker (loaded once at module level)
+# --------------------------------------------------------------------------
+
+_reranker: CrossEncoder | None = None
+
+
+def _get_reranker() -> CrossEncoder:
+    """Lazy-load the cross-encoder so cold-start only happens on first use."""
+    global _reranker
+    if _reranker is None:
+        logger.info("Loading cross-encoder reranker: BAAI/bge-reranker-base …")
+        _reranker = CrossEncoder("BAAI/bge-reranker-base", max_length=512)
+        logger.info("Reranker loaded.")
+    return _reranker
 
 # --------------------------------------------------------------------------
 # Known vocab (loaded once)
@@ -87,6 +111,7 @@ class RAGState(TypedDict):
     wants_full_detail: bool
     chunks: List[dict]
     answer: Optional[str]
+    is_general: bool
 
 
 # --------------------------------------------------------------------------
@@ -186,6 +211,47 @@ def _fetch_by_vector(cur, query_embedding, disorder=None, top_k=5):
     return [{"chunk_id": r[0], "disorder_name": r[1], "section_name": r[2], "text": r[3]} for r in rows]
 
 
+def rerank_chunks(query: str, chunks: List[dict], top_k: int = 7) -> List[dict]:
+    """
+    Re-scores candidate chunks against the user query using a cross-encoder
+    (BAAI/bge-reranker-base) and returns the top-k by relevance.
+
+    Parameters:
+        query:  The user's current question.
+        chunks: De-duplicated candidate chunks from dual vector search.
+        top_k:  Number of chunks to keep after reranking.
+
+    Returns:
+        List of the top-k chunks sorted by descending reranker score.
+    """
+    if not chunks:
+        return []
+
+    reranker = _get_reranker()
+
+    # Build (query, passage) pairs for the cross-encoder
+    pairs = [
+        [query, f"{c['disorder_name']} — {c['section_name']}\n{c['text']}"]
+        for c in chunks
+    ]
+
+    scores = reranker.predict(pairs)
+
+    # Attach scores and sort descending
+    scored = sorted(zip(chunks, scores), key=lambda x: x[1], reverse=True)
+
+    top_chunks = [chunk for chunk, _score in scored[:top_k]]
+
+    logger.info(
+        "Reranker: %d candidates → top %d kept  (score range %.4f … %.4f)",
+        len(chunks), len(top_chunks),
+        scored[0][1] if scored else 0,
+        scored[-1][1] if scored else 0,
+    )
+
+    return top_chunks
+
+
 def retrieve(state: RAGState) -> RAGState:
     disorders = state["disorders"]
     sections = state["sections"]
@@ -220,7 +286,19 @@ def retrieve(state: RAGState) -> RAGState:
     # Case: no disorder detected -> pure vector search, whole table
     else:
         from app.llm import expand_to_clinical_terms
-        expanded_query = expand_to_clinical_terms(state["current_question"])
+
+        # ✅ Classify query first
+        result = expand_to_clinical_terms(state["current_question"])
+
+        # ✅ If general query — skip DSM retrieval
+        if result["type"] == "general":
+            print(f"DEBUG - General query detected, skipping DSM retrieval: {state['current_question']}")
+            state["chunks"] = []
+            state["is_general"] = True
+            return state
+
+        # ✅ Clinical query — use expanded query
+        expanded_query = result["query"]
 
         original_embedding = embed_batch([state["current_question"]])[0]
         expanded_embedding = embed_batch([expanded_query])[0]
@@ -228,7 +306,7 @@ def retrieve(state: RAGState) -> RAGState:
         chunks_from_original = _fetch_by_vector(cur, original_embedding, disorder=None, top_k=30)
         chunks_from_expanded = _fetch_by_vector(cur, expanded_embedding, disorder=None, top_k=30)
 
-        # Merge: interleave so neither source dominates, then dedupe by disorder
+        # Merge: interleave so neither source dominates, then dedupe by chunk_id
         merged_raw = []
         for a, b in zip(chunks_from_original, chunks_from_expanded):
             merged_raw.append(a)
@@ -237,18 +315,19 @@ def retrieve(state: RAGState) -> RAGState:
         merged_raw += chunks_from_original[len(chunks_from_expanded):]
         merged_raw += chunks_from_expanded[len(chunks_from_original):]
 
-        seen_disorders = set()
-        chunks = []
+        # Dedupe by chunk_id only — allow multiple sections of the same
+        # disorder (e.g. Diagnostic Criteria + Differential Diagnosis)
+        deduped = []
         seen_chunk_ids = set()
         for c in merged_raw:
             if c["chunk_id"] in seen_chunk_ids:
                 continue
             seen_chunk_ids.add(c["chunk_id"])
-            if c["disorder_name"] not in seen_disorders:
-                chunks.append(c)
-                seen_disorders.add(c["disorder_name"])
-            if len(chunks) >= 12:
-                break
+            deduped.append(c)
+
+        # Cross-encoder reranking: score every candidate against the
+        # user's question and keep only the most relevant chunks.
+        chunks = rerank_chunks(state["current_question"], deduped, top_k=7)
 
     cur.close()
     conn.close()
@@ -256,19 +335,32 @@ def retrieve(state: RAGState) -> RAGState:
     print(f"DEBUG - Retrieved chunks: {len(chunks)}")
     print(f"DEBUG - Retrieved disorders: {[c['disorder_name'] for c in chunks]}")
     state["chunks"] = chunks
+    state["is_general"] = False
     return state
-
 
 # --------------------------------------------------------------------------
 # Node 3: Generate
 # --------------------------------------------------------------------------
 
 def generate(state: RAGState) -> RAGState:
-    if not state["chunks"]:
-        state["answer"] = "I couldn't find relevant information in the DSM-5-TR reference for this question."
+    if state["is_general"]:
+        state["answer"] = generate_general_response(
+            state["current_question"]
+        )
         return state
 
-    state["answer"] = generate_answer(state["query"], state["chunks"])
+    if not state["chunks"]:
+        state["answer"] = (
+            "I couldn't find relevant information in the DSM-5-TR "
+            "reference for this question."
+        )
+        return state
+
+    state["answer"] = generate_answer(
+        state["query"],
+        state["chunks"]
+    )
+
     return state
 
 
