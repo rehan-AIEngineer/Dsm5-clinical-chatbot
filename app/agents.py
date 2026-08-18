@@ -142,7 +142,7 @@ def run_agent_1_guardrail(user_message: str, session_context: dict) -> dict:
     prompt = f"""You are an Intent and Safety Classifier for a Mental Health and Grief Support System.
 
 Categorize the user's input into EXACTLY ONE category:
-1. CLINICAL_QUERY: Mental health concerns, symptoms, psychiatric coping, or caregiving.
+1. CLINICAL_QUERY: Mental health concerns, symptoms, psychiatric coping, caregiving questions, or natural conversational greetings/salutations (e.g. "AssalamoAlaikum", "Salam", "Hello", "Hi", "How are you?").
 2. GRIEF_WORKBOOK: Reflections on loss, bereavement, memories, or workbook discussions.
    NOTE: Deep sadness/yearning for the deceased is GRIEF, not CRISIS, unless active
    self-harm or a specific plan is stated. However, if the message expresses passive
@@ -150,7 +150,7 @@ Categorize the user's input into EXACTLY ONE category:
    "passive_risk_flag": true even while keeping the category as GRIEF_WORKBOOK.
 3. CRISIS: Active suicide threats, explicit self-harm plans, intent to harm others, or
    immediate physical emergency.
-4. OFF_TOPIC: Coding requests, math, software dev, trivia, recipes, or unrelated tasks.
+4. OFF_TOPIC: Coding requests, programming, math, stock market, gaming, weather, recipes, or completely unrelated tasks.
 
 Context: {context_json}
 User input: {user_message}
