@@ -28,17 +28,23 @@ TABLE_NAME = "dsm5_chunks"
 
 
 def get_connection():
-    conn = psycopg2.connect(
-        host=DB_HOST,
-        port=DB_PORT,
-        dbname=DB_NAME,
-        user=DB_USER,
-        password=DB_PASSWORD,
-    )
+    connect_kwargs = {
+        "host": DB_HOST,
+        "port": DB_PORT,
+        "dbname": DB_NAME,
+        "user": DB_USER,
+        "password": DB_PASSWORD,
+    }
+    # Supabase cloud pooler requires sslmode='require' in production / Docker
+    if DB_HOST and "supabase" in DB_HOST.lower():
+        connect_kwargs["sslmode"] = "require"
+
+    conn = psycopg2.connect(**connect_kwargs)
     conn.autocommit = True
-    with conn.cursor() as cur:
-        cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
-    register_vector(conn)
+    try:
+        register_vector(conn)
+    except Exception:
+        pass
     return conn
 
 

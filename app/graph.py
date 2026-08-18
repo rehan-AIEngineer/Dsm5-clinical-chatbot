@@ -88,12 +88,33 @@ DISORDER_ABBREVIATIONS = {
 }
 
 def _load_disorder_names() -> List[str]:
-    conn = get_connection()
-    with conn.cursor() as cur:
-        cur.execute("SELECT DISTINCT disorder_name FROM dsm5_chunks;")
-        names = [row[0] for row in cur.fetchall()]
-    conn.close()
-    return names
+    try:
+        conn = get_connection()
+        with conn.cursor() as cur:
+            cur.execute("SELECT DISTINCT disorder_name FROM dsm5_chunks;")
+            names = [row[0] for row in cur.fetchall()]
+        conn.close()
+        if names:
+            return names
+    except Exception as e:
+        logger.warning("Could not load disorder names from DB at startup: %s. Using default list.", e)
+
+    return [
+        "Major Depressive Disorder",
+        "Schizophrenia",
+        "Bipolar I Disorder",
+        "Bipolar II Disorder",
+        "Generalized Anxiety Disorder",
+        "Posttraumatic Stress Disorder",
+        "Attention-Deficit/Hyperactivity Disorder",
+        "Autism Spectrum Disorder",
+        "Obsessive-Compulsive Disorder",
+        "Prolonged Grief Disorder",
+        "Substance-Induced Psychotic Disorder",
+        "Somatic Symptom Disorder",
+        "Panic Disorder",
+        "Borderline Personality Disorder",
+    ]
 
 
 DISORDER_NAMES = _load_disorder_names()
