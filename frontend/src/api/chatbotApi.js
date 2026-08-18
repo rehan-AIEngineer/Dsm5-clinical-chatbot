@@ -1,10 +1,10 @@
 // src/api/chatbotApi.js
 import { supabase } from '../lib/supabase'
 
-// FOR PRODUCTION, UNCOMMENT THE FOLLOWING LINE AND SET THE API BASE URL
-// const API_BASE_URL = "https://dsm5-rag-chatbot-production.up.railway.app";
-
-const API_BASE_URL = "http://localhost:8000"; // FOR LOCAL DEVELOPMENT
+// Live Production Backend on Railway (with fallback support)
+const API_BASE_URL =
+  import.meta.env.VITE_API_URL ||
+  "https://dsm5-clinical-chatbot-production.up.railway.app";
 
 // ============================================================
 // Helper: Get Supabase Session Token
