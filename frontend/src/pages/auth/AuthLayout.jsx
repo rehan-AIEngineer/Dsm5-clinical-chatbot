@@ -4,15 +4,15 @@ function AuthLayout({ eyebrow, title, subtitle, leftSubtitle, children }) {
     <div className="grid min-h-screen w-full grid-cols-1 bg-slate-50 md:grid-cols-2">
       <div className="hidden flex-col justify-between bg-slate-900 p-10 text-slate-200 md:flex">
         <div className="flex items-center gap-2 text-sm font-semibold text-white">
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-teal-600 text-xs font-semibold text-white">
-            DR
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-teal-600 text-sm font-semibold text-white">
+            🌿
           </span>
-          DSM-5-TR Clinical Assistant
+          MindBridge Clinical Companion
         </div>
 
         <div className="max-w-sm">
           <h1 className="text-2xl font-semibold leading-snug text-white">
-            Grounded, careful answers — every time someone needs them.
+            Empathetic mental health guidance and personalized care support.
           </h1>
           <p className="mt-3 text-sm leading-relaxed text-slate-400">
             {leftSubtitle || "Sign in to pick up your previous conversations, or start a fresh one whenever you need it."}

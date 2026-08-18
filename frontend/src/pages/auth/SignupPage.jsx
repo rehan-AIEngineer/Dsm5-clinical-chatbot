@@ -25,15 +25,15 @@ function SignupPage({ onSignUp, onGoToLogin }) {
     <div className="flex h-screen w-full bg-slate-50">
       <aside className="hidden w-[42%] shrink-0 flex-col justify-between bg-slate-900 p-10 text-slate-200 md:flex">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-teal-600 text-xs font-semibold text-white">
-            DR
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-teal-600 text-sm font-semibold text-white">
+            🌿
           </div>
-          <span className="text-sm font-semibold text-white">DSM-5-TR Clinical Assistant</span>
+          <span className="text-sm font-semibold text-white">MindBridge Clinical Companion</span>
         </div>
 
         <div>
-          <h1 className="max-w-md text-4xl font-semibold leading-tight text-white">
-            Grounded, careful answers — every time someone needs them.
+          <h1 className="max-w-md text-3xl font-semibold leading-tight text-white">
+            Empathetic mental health guidance and personalized care support.
           </h1>
           <p className="mt-4 max-w-sm text-sm leading-relaxed text-slate-400">
             Create an account to save your conversations and pick up right
