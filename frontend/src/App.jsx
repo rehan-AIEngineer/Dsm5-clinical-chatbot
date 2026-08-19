@@ -17,6 +17,7 @@ import {
   sendPipelineMessage,
   getChats,
   getChatById,
+  linkGriefEntrySession,
 } from "./api/chatbotApi";
 
 
@@ -381,6 +382,98 @@ function App() {
     }
   };
 
+  // ── Open or continue conversation from a Grief Calendar reflection ──
+  const handleOpenReflectionChat = async (date, text, existingSessionId = null, entryId = null) => {
+    if (!text || !text.trim()) return;
+
+    // If an existing conversation is already linked and loaded, switch to it!
+    if (existingSessionId && chats.some((c) => c.id === existingSessionId)) {
+      handleSelectChat(existingSessionId);
+      return;
+    }
+
+    // Otherwise, create a NEW conversation with this reflection as the initial prompt
+    try {
+      setLoading(true);
+      setError(null);
+
+      // 1. Create a new persistent chat on the backend
+      const { session_id } = await createNewChat();
+      const reflectionText = text.trim();
+      const chatTitle = reflectionText.length > 32 ? reflectionText.slice(0, 32) + "…" : reflectionText;
+
+      const newChatObj = {
+        id: session_id,
+        title: chatTitle,
+        messages: [
+          { role: "user", content: reflectionText },
+          { role: "assistant", content: "" },
+        ],
+        created_at: new Date().toISOString(),
+        persisted: true,
+      };
+
+      setChats((prev) => [newChatObj, ...prev]);
+      setActiveChatId(session_id);
+
+      // 2. Link this new session_id to the grief reflection in DB
+      try {
+        await linkGriefEntrySession(date, session_id, entryId);
+      } catch (e) {
+        console.warn("Could not link session to reflection:", e);
+      }
+
+      // 3. Send through 4-agent pipeline
+      const ctx = {
+        feature_mode: "grief_workbook",
+        user_role: "grieving",
+        grief_data: {
+          user_memory_profile: {
+            deceased_or_loss: lossRelationship || undefined,
+            time_since_loss: timeSinceLoss,
+            grief_themes: griefThemes
+              ? griefThemes.split(",").map((s) => s.trim()).filter(Boolean)
+              : [],
+          },
+          current_workbook_entry: { entry_date: date, entry_text: reflectionText },
+        },
+      };
+
+      const res = await sendPipelineMessage(session_id, reflectionText, ctx);
+      const answer = res.answer || FALLBACK_ANSWER;
+
+      if (res.debug) {
+        setDebugData(res.debug);
+      }
+
+      // Typing animation
+      let currentLen = 0;
+      const chunkSize = 3;
+      const interval = setInterval(() => {
+        currentLen += chunkSize;
+        const currentText = answer.slice(0, currentLen);
+        setChats((prev) =>
+          prev.map((c) => {
+            if (c.id !== session_id) return c;
+            const msgs = [...c.messages];
+            const last = msgs.length - 1;
+            if (last >= 0 && msgs[last].role === "assistant") {
+              msgs[last] = { role: "assistant", content: currentText };
+            }
+            return { ...c, messages: msgs };
+          })
+        );
+        if (currentLen >= answer.length) {
+          clearInterval(interval);
+        }
+      }, 15);
+    } catch (err) {
+      setError(err.message || "Failed to open conversation from reflection.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // ── Auth gating ──
   if (checkingAuth) {
     return (
@@ -458,6 +551,8 @@ function App() {
         griefThemes={griefThemes} setGriefThemes={setGriefThemes}
         calendarText={calendarText} setCalendarText={setCalendarText}
         selectedDate={selectedDate} setSelectedDate={setSelectedDate}
+        onOpenReflectionChat={handleOpenReflectionChat}
+        onSelectChat={handleSelectChat}
       />
 
       {/* Right: Main chat with top-right Zone C debug toggle */}

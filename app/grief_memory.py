@@ -93,16 +93,17 @@ def get_workbook_entry_by_date(entry_date: str, user_id: Optional[str] = None, s
         if user_id:
             cur.execute(
                 f"""
-                SELECT id, entry_date, entry_text, themes, created_at
+                SELECT id, entry_date, entry_text, themes, created_at, session_id
                 FROM {TABLE_NAME}
                 WHERE user_id = %s AND entry_date = %s
+                ORDER BY created_at DESC LIMIT 1
                 """,
                 (user_id, entry_date),
             )
         else:
             cur.execute(
                 f"""
-                SELECT id, entry_date, entry_text, themes, created_at
+                SELECT id, entry_date, entry_text, themes, created_at, session_id
                 FROM {TABLE_NAME}
                 WHERE (session_id = %s OR session_id IS NULL) AND entry_date = %s
                 ORDER BY created_at DESC LIMIT 1
@@ -121,7 +122,89 @@ def get_workbook_entry_by_date(entry_date: str, user_id: Optional[str] = None, s
         "entry_text": row[2],
         "themes": row[3] if isinstance(row[3], dict) else json.loads(row[3] or "{}"),
         "created_at": str(row[4]),
+        "session_id": str(row[5]) if row[5] else None,
     }
+
+
+def link_workbook_entry_session(
+    session_id: str,
+    entry_date: Optional[str] = None,
+    entry_id: Optional[int] = None,
+    user_id: Optional[str] = None,
+) -> bool:
+    """Links an existing workbook reflection to a chat session ID."""
+    conn = get_connection()
+    with conn.cursor() as cur:
+        if entry_id:
+            if user_id:
+                cur.execute(
+                    f"UPDATE {TABLE_NAME} SET session_id = %s, updated_at = NOW() WHERE id = %s AND user_id = %s RETURNING id;",
+                    (session_id, entry_id, user_id),
+                )
+            else:
+                cur.execute(
+                    f"UPDATE {TABLE_NAME} SET session_id = %s, updated_at = NOW() WHERE id = %s RETURNING id;",
+                    (session_id, entry_id),
+                )
+        elif entry_date:
+            if user_id:
+                cur.execute(
+                    f"UPDATE {TABLE_NAME} SET session_id = %s, updated_at = NOW() WHERE entry_date = %s AND user_id = %s RETURNING id;",
+                    (session_id, entry_date, user_id),
+                )
+            else:
+                cur.execute(
+                    f"UPDATE {TABLE_NAME} SET session_id = %s, updated_at = NOW() WHERE entry_date = %s RETURNING id;",
+                    (session_id, entry_date),
+                )
+        row = cur.fetchone()
+    conn.commit()
+    conn.close()
+    return row is not None
+
+
+def delete_workbook_entry(
+    entry_date: Optional[str] = None,
+    entry_id: Optional[int] = None,
+    user_id: Optional[str] = None,
+    session_id: Optional[str] = None,
+) -> bool:
+    """
+    Deletes a workbook reflection and its pgvector embedding permanently.
+    Ensures it will never appear in future semantic grief retrieval.
+    """
+    conn = get_connection()
+    with conn.cursor() as cur:
+        if entry_id:
+            if user_id:
+                cur.execute(
+                    f"DELETE FROM {TABLE_NAME} WHERE id = %s AND user_id = %s RETURNING id;",
+                    (entry_id, user_id),
+                )
+            else:
+                cur.execute(
+                    f"DELETE FROM {TABLE_NAME} WHERE id = %s RETURNING id;",
+                    (entry_id,),
+                )
+        elif entry_date:
+            if user_id:
+                cur.execute(
+                    f"DELETE FROM {TABLE_NAME} WHERE entry_date = %s AND user_id = %s RETURNING id;",
+                    (entry_date, user_id),
+                )
+            else:
+                cur.execute(
+                    f"DELETE FROM {TABLE_NAME} WHERE entry_date = %s AND (session_id = %s OR session_id IS NULL) RETURNING id;",
+                    (entry_date, session_id),
+                )
+        else:
+            conn.close()
+            return False
+
+        row = cur.fetchone()
+    conn.commit()
+    conn.close()
+    return row is not None
 
 
 def get_calendar_dates(user_id: Optional[str] = None, session_id: Optional[str] = None) -> List[str]:

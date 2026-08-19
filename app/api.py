@@ -28,6 +28,8 @@ from app.grief_memory import (
     save_workbook_entry,
     get_workbook_entry_by_date,
     get_calendar_dates,
+    delete_workbook_entry,
+    link_workbook_entry_session,
 )
 
 logger = logging.getLogger(__name__)
@@ -83,6 +85,12 @@ class GriefEntryRequest(BaseModel):
     entry_text: str = Field(..., min_length=1)
     session_id: Optional[str] = None
     themes: Optional[Dict[str, Any]] = None
+
+
+class GriefLinkSessionRequest(BaseModel):
+    session_id: str = Field(..., min_length=1)
+    entry_date: Optional[str] = None
+    entry_id: Optional[int] = None
 
 
 class RenameRequest(BaseModel):
@@ -331,5 +339,42 @@ def get_marked_calendar_dates(session_id: Optional[str] = None, user = Depends(v
     """Gets list of YYYY-MM-DD dates with existing workbook reflections."""
     dates = get_calendar_dates(user_id=user.id, session_id=session_id)
     return {"dates": dates}
+
+
+@app.delete("/grief/entry")
+def delete_grief_reflection(
+    date: Optional[str] = None,
+    entry_id: Optional[int] = None,
+    session_id: Optional[str] = None,
+    user = Depends(verify_token),
+):
+    """Deletes a reflection and its pgvector embedding from long-term memory."""
+    success = delete_workbook_entry(
+        entry_date=date,
+        entry_id=entry_id,
+        user_id=user.id,
+        session_id=session_id,
+    )
+    if not success:
+        raise HTTPException(status_code=404, detail="Reflection not found or unauthorized.")
+    return {"message": "Reflection deleted successfully"}
+
+
+@app.post("/grief/entry/link-session")
+def link_grief_reflection_session(
+    request: GriefLinkSessionRequest,
+    user = Depends(verify_token),
+):
+    """Links a workbook reflection to a chat session ID."""
+    success = link_workbook_entry_session(
+        session_id=request.session_id,
+        entry_date=request.entry_date,
+        entry_id=request.entry_id,
+        user_id=user.id,
+    )
+    if not success:
+        raise HTTPException(status_code=404, detail="Could not link session to reflection.")
+    return {"message": "Session linked successfully"}
+
 
 

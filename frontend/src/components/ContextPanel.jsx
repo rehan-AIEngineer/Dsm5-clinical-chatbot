@@ -3,7 +3,12 @@
 // No raw JSON, no technical labels, no "pgvector" mention
 
 import React, { useState, useEffect } from "react";
-import { saveGriefEntry, getGriefEntry, getGriefCalendarDates } from "../api/chatbotApi";
+import {
+  saveGriefEntry,
+  getGriefEntry,
+  getGriefCalendarDates,
+  deleteGriefEntry,
+} from "../api/chatbotApi";
 
 const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 const MONTHS = [
@@ -43,6 +48,8 @@ export default function ContextPanel({
   // Calendar reflection passed up
   calendarText, setCalendarText,
   selectedDate, setSelectedDate,
+  onOpenReflectionChat,
+  onSelectChat,
 }) {
   const [tab, setTab] = useState("clinical"); // "clinical" | "grief"
 
@@ -53,6 +60,9 @@ export default function ContextPanel({
   const [markedDates, setMarkedDates] = useState([]); // ["YYYY-MM-DD", ...]
   const [savingReflection, setSavingReflection] = useState(false);
   const [saveConfirm, setSaveConfirm] = useState(false);
+  const [currentEntry, setCurrentEntry] = useState(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // Load marked dates when session changes
   useEffect(() => {
@@ -63,15 +73,28 @@ export default function ContextPanel({
     }
   }, [sessionId]);
 
-  // Load reflection text when selected date changes
+  // Load reflection text when selectedDate changes
   useEffect(() => {
+    setShowDeleteConfirm(false);
     if (!selectedDate || !sessionId || sessionId.startsWith("temp-")) {
       setCalendarText("");
+      setCurrentEntry(null);
       return;
     }
     getGriefEntry(selectedDate, sessionId)
-      .then((res) => setCalendarText(res?.entry?.entry_text || ""))
-      .catch(() => setCalendarText(""));
+      .then((res) => {
+        if (res?.entry) {
+          setCalendarText(res.entry.entry_text || "");
+          setCurrentEntry(res.entry);
+        } else {
+          setCalendarText("");
+          setCurrentEntry(null);
+        }
+      })
+      .catch(() => {
+        setCalendarText("");
+        setCurrentEntry(null);
+      });
   }, [selectedDate, sessionId]);
 
   const handleSaveReflection = async () => {
@@ -79,8 +102,16 @@ export default function ContextPanel({
     setSavingReflection(true);
     setSaveConfirm(false);
     try {
-      await saveGriefEntry(selectedDate, calendarText, sessionId, { mode: "grief_workbook" });
+      const res = await saveGriefEntry(selectedDate, calendarText, sessionId, { mode: "grief_workbook" });
       setSaveConfirm(true);
+      if (res?.id) {
+        setCurrentEntry((prev) => ({
+          ...prev,
+          id: res.id,
+          entry_date: selectedDate,
+          entry_text: calendarText,
+        }));
+      }
       if (!markedDates.includes(selectedDate)) {
         setMarkedDates((prev) => [...prev, selectedDate]);
       }
@@ -89,6 +120,34 @@ export default function ContextPanel({
       // silent fail — user can retry
     } finally {
       setSavingReflection(false);
+    }
+  };
+
+  const handleDeleteReflection = async () => {
+    if (!selectedDate || deleting) return;
+    setDeleting(true);
+    try {
+      await deleteGriefEntry(selectedDate, currentEntry?.id, sessionId);
+      setMarkedDates((prev) => prev.filter((d) => d !== selectedDate));
+      setCalendarText("");
+      setCurrentEntry(null);
+      setShowDeleteConfirm(false);
+    } catch (err) {
+      console.error("Failed to delete reflection:", err);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleOpenConversationClick = () => {
+    if (!calendarText.trim()) return;
+    if (onOpenReflectionChat) {
+      onOpenReflectionChat(
+        selectedDate,
+        calendarText,
+        currentEntry?.session_id || null,
+        currentEntry?.id || null
+      );
     }
   };
 
@@ -104,14 +163,23 @@ export default function ContextPanel({
   const calDays = buildCalendarDays(calYear, calMonth);
   const todayStr = toDateStr(today.getFullYear(), today.getMonth(), today.getDate());
 
+  const hasSavedEntry = markedDates.includes(selectedDate) || !!currentEntry;
+
   if (!isOpen) return null;
 
   return (
     <div className="context-panel" style={{ position: "relative" }}>
-      {/* Header */}
-      <div className="context-panel-header">
-        <p className="context-panel-title">Your context</p>
-        <button className="context-panel-close" onClick={onClose} title="Close">✕</button>
+      {/* Panel header */}
+      <div className="context-header">
+        <div>
+          <p className="context-eyebrow">Session settings</p>
+          <h3 className="context-title">Personal context</h3>
+        </div>
+        <button className="btn-close-context" onClick={onClose}>✕</button>
+      </div>
+
+      <div className="context-body">
+        {/* Tab switcher */}
         <div className="context-tabs">
           <button
             className={`context-tab${tab === "clinical" ? " active" : ""}`}
@@ -126,73 +194,72 @@ export default function ContextPanel({
             Grief workbook
           </button>
         </div>
-      </div>
-
-      {/* Body */}
-      <div className="context-panel-body">
 
         {/* ── Clinical context tab ── */}
         {tab === "clinical" && (
           <>
-            <p className="context-optional-note">
-              All fields are optional. Sharing what you're comfortable with helps us provide more relevant support.
-            </p>
-
             <div className="field">
-              <label>I am the</label>
-              <select value={userRole} onChange={(e) => setUserRole(e.target.value)}>
-                <option value="caregiver">A caregiver or family member</option>
-                <option value="individual">The person experiencing symptoms</option>
+              <label>Feature mode</label>
+              <select value={featureMode} onChange={(e) => setFeatureMode(e.target.value)}>
+                <option value="clinical_support">Clinical mental health support</option>
+                <option value="grief_workbook">Grief & loss workbook</option>
               </select>
             </div>
 
             <div className="field">
-              <label>My relationship to them</label>
+              <label>Your role</label>
+              <select value={userRole} onChange={(e) => setUserRole(e.target.value)}>
+                <option value="caregiver">I care for someone else</option>
+                <option value="individual">I am experiencing this myself</option>
+              </select>
+            </div>
+
+            <div className="field">
+              <label>Diagnosis status</label>
+              <select value={diagnosisStatus} onChange={(e) => setDiagnosisStatus(e.target.value)}>
+                <option value="formal_diagnosis">Formal diagnosis received</option>
+                <option value="suspected">Suspected / no diagnosis yet</option>
+                <option value="unknown">Not sure</option>
+              </select>
+            </div>
+
+            <div className="field">
+              <label>Reported symptoms (optional)</label>
               <input
                 type="text"
-                value={relationship}
-                onChange={(e) => setRelationship(e.target.value)}
-                placeholder="e.g. spouse, sibling, parent…"
-              />
-            </div>
-
-            <div className="field">
-              <label>Current situation</label>
-              <select value={diagnosisStatus} onChange={(e) => setDiagnosisStatus(e.target.value)}>
-                <option value="unknown">Not yet diagnosed</option>
-                <option value="suspected">Symptoms present, seeking help</option>
-                <option value="known">Diagnosis already confirmed</option>
-              </select>
-            </div>
-
-            <div className="field">
-              <label>Symptoms noticed (optional)</label>
-              <textarea
                 value={reportedSymptoms}
                 onChange={(e) => setReportedSymptoms(e.target.value)}
-                placeholder="Describe what you've observed, in your own words…"
+                placeholder="e.g. low mood, trouble sleeping, racing thoughts…"
               />
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <div className="field">
-                <label>How long (approx.)</label>
-                <input
-                  type="text"
-                  value={durationMonths}
-                  onChange={(e) => setDurationMonths(e.target.value)}
-                  placeholder="e.g. 3 months"
-                />
+                <label>Duration</label>
+                <select value={durationMonths} onChange={(e) => setDurationMonths(Number(e.target.value))}>
+                  <option value={1}>About 1 month</option>
+                  <option value={3}>About 3 months</option>
+                  <option value={6}>About 6 months</option>
+                  <option value={12}>1 year or more</option>
+                </select>
               </div>
               <div className="field">
                 <label>Substance use</label>
-                <input
-                  type="text"
-                  value={substanceUse}
-                  onChange={(e) => setSubstanceUse(e.target.value)}
-                  placeholder="If relevant…"
-                />
+                <select value={substanceUse ? "yes" : "no"} onChange={(e) => setSubstanceUse(e.target.value === "yes")}>
+                  <option value="no">No</option>
+                  <option value="yes">Yes</option>
+                </select>
               </div>
+            </div>
+
+            <div className="field">
+              <label>Relationship (if caregiver)</label>
+              <input
+                type="text"
+                value={relationship}
+                onChange={(e) => setRelationship(e.target.value)}
+                placeholder="e.g. my son, my mother, my spouse…"
+              />
             </div>
           </>
         )}
@@ -292,6 +359,56 @@ export default function ContextPanel({
                 <p className="save-confirm">
                   <span>✓</span> Saved
                 </p>
+              )}
+
+              {/* Action buttons when a saved reflection exists */}
+              {hasSavedEntry && calendarText.trim() && (
+                <>
+                  {showDeleteConfirm ? (
+                    <div className="delete-confirm-box">
+                      <p className="delete-confirm-text">
+                        Are you sure you want to delete this reflection?
+                      </p>
+                      <div className="delete-confirm-actions">
+                        <button
+                          className="btn-confirm-cancel"
+                          onClick={() => setShowDeleteConfirm(false)}
+                          disabled={deleting}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          className="btn-confirm-delete"
+                          onClick={handleDeleteReflection}
+                          disabled={deleting}
+                        >
+                          {deleting ? "Deleting…" : "Delete"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="reflection-actions">
+                      <button
+                        className="btn-open-conversation"
+                        onClick={handleOpenConversationClick}
+                        title={
+                          currentEntry?.session_id
+                            ? "Continue conversation in existing chat"
+                            : "Start new conversation with this reflection"
+                        }
+                      >
+                        <span>💬</span> Open Conversation
+                      </button>
+                      <button
+                        className="btn-delete-reflection"
+                        onClick={() => setShowDeleteConfirm(true)}
+                        title="Delete reflection and remove from memory"
+                      >
+                        <span>🗑️</span> Delete
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </>

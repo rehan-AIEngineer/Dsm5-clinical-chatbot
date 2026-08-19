@@ -298,3 +298,41 @@ export async function getGriefCalendarDates(sessionId = null) {
 
   return res.json()
 }
+
+export async function deleteGriefEntry(date, entryId = null, sessionId = null) {
+  const headers = await getAuthHeaders()
+  let url = `${API_BASE_URL}/grief/entry?date=${encodeURIComponent(date)}`
+  if (entryId) url += `&entry_id=${encodeURIComponent(entryId)}`
+  if (sessionId) url += `&session_id=${encodeURIComponent(sessionId)}`
+
+  const res = await fetch(url, {
+    method: 'DELETE',
+    headers,
+  })
+
+  if (!res.ok) {
+    throw new Error('Failed to delete Grief Workbook entry.')
+  }
+
+  return res.json()
+}
+
+export async function linkGriefEntrySession(date, sessionId, entryId = null) {
+  const headers = await getAuthHeaders()
+
+  const res = await fetch(`${API_BASE_URL}/grief/entry/link-session`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      session_id: sessionId,
+      entry_date: date,
+      entry_id: entryId,
+    }),
+  })
+
+  if (!res.ok) {
+    throw new Error('Failed to link session to Grief Workbook entry.')
+  }
+
+  return res.json()
+}
