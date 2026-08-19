@@ -44,6 +44,7 @@ function App() {
 
   // ── Auth view ──
   const [authView, setAuthView] = useState("login");
+  const [authSuccessMsg, setAuthSuccessMsg] = useState("");
 
   // ── Chat / session state ──
   const [chats, setChats] = useState([]);
@@ -489,7 +490,14 @@ function App() {
       <ResetPasswordPage
         isValidLink
         onSetNewPassword={resetPassword}
-        onGoToForgot={() => setAuthView("forgot")}
+        onGoToForgot={() => {
+          setAuthSuccessMsg("");
+          setAuthView("forgot");
+        }}
+        onResetSuccess={(msg) => {
+          setAuthSuccessMsg(msg);
+          setAuthView("login");
+        }}
       />
     );
 
@@ -498,21 +506,38 @@ function App() {
       return (
         <SignupPage
           onSignUp={signup}
-          onGoToLogin={() => setAuthView("login")}
+          onGoToLogin={() => {
+            setAuthSuccessMsg("");
+            setAuthView("login");
+          }}
+          onSignUpSuccess={(msg) => {
+            setAuthSuccessMsg(msg);
+            setAuthView("login");
+          }}
         />
       );
     if (authView === "forgot")
       return (
         <ForgotPasswordPage
           onRequestReset={forgotPassword}
-          onGoToLogin={() => setAuthView("login")}
+          onGoToLogin={() => {
+            setAuthSuccessMsg("");
+            setAuthView("login");
+          }}
         />
       );
     return (
       <LoginPage
         onSignIn={login}
-        onGoToSignup={() => setAuthView("signup")}
-        onGoToForgot={() => setAuthView("forgot")}
+        onGoToSignup={() => {
+          setAuthSuccessMsg("");
+          setAuthView("signup");
+        }}
+        onGoToForgot={() => {
+          setAuthSuccessMsg("");
+          setAuthView("forgot");
+        }}
+        successMessage={authSuccessMsg}
       />
     );
   }

@@ -5,7 +5,7 @@
 
 import { useState } from "react";
 
-function LoginPage({ onSignIn, onGoToSignup, onGoToForgot }) {
+function LoginPage({ onSignIn, onGoToSignup, onGoToForgot, successMessage }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -60,6 +60,12 @@ function LoginPage({ onSignIn, onGoToSignup, onGoToForgot }) {
           <p className="mt-1 text-sm text-slate-500">
             Continue your conversations and saved history.
           </p>
+
+          {successMessage && (
+            <div className="mt-4 rounded-lg border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-800">
+              {successMessage}
+            </div>
+          )}
 
           <label className="mt-6 block text-sm font-medium text-slate-700">
             Email

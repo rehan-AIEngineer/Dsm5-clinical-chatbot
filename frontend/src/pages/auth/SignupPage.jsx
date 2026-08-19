@@ -1,7 +1,7 @@
 // pages/auth/Signup.jsx
 import { useState } from "react";
 
-function SignupPage({ onSignUp, onGoToLogin }) {
+function SignupPage({ onSignUp, onGoToLogin, onSignUpSuccess }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -14,6 +14,11 @@ function SignupPage({ onSignUp, onGoToLogin }) {
     setLoading(true);
     try {
       await onSignUp(name, email, password);
+      if (onSignUpSuccess) {
+        onSignUpSuccess("Account created successfully! Please sign in with your email and password.");
+      } else if (onGoToLogin) {
+        onGoToLogin();
+      }
     } catch (err) {
       setError(err.message || "Couldn't create your account. Please try again.");
     } finally {

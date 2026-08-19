@@ -1,7 +1,7 @@
 // pages/auth/ResetPassword.jsx
 import { useState } from "react";
 
-function ResetPasswordPage({ isValidLink, onSetNewPassword, onGoToForgot }) {
+function ResetPasswordPage({ isValidLink, onSetNewPassword, onGoToForgot, onResetSuccess }) {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -19,6 +19,9 @@ function ResetPasswordPage({ isValidLink, onSetNewPassword, onGoToForgot }) {
     setLoading(true);
     try {
       await onSetNewPassword(password);
+      if (onResetSuccess) {
+        onResetSuccess("Password reset successfully! Please sign in with your new password.");
+      }
     } catch (err) {
       setError(err.message || "Couldn't reset your password. Please try again.");
     } finally {
