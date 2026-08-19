@@ -20,29 +20,11 @@ import difflib
 from typing import TypedDict, List, Optional
 
 from langgraph.graph import StateGraph, END
-from sentence_transformers import CrossEncoder
-
 from app.vectorstore import get_connection
 from app.embedder import embed_batch
 from app.llm import generate_answer, generate_general_response
 
 logger = logging.getLogger(__name__)
-
-# --------------------------------------------------------------------------
-# Cross-encoder reranker (loaded once at module level)
-# --------------------------------------------------------------------------
-
-_reranker: CrossEncoder | None = None
-
-
-def _get_reranker() -> CrossEncoder:
-    """Lazy-load the cross-encoder so cold-start only happens on first use."""
-    global _reranker
-    if _reranker is None:
-        logger.info("Loading cross-encoder reranker: BAAI/bge-reranker-base …")
-        _reranker = CrossEncoder("BAAI/bge-reranker-base", max_length=512)
-        logger.info("Reranker loaded.")
-    return _reranker
 
 # --------------------------------------------------------------------------
 # Known vocab (loaded once)
@@ -346,17 +328,16 @@ def retrieve(state: RAGState) -> RAGState:
             seen_chunk_ids.add(c["chunk_id"])
             deduped.append(c)
 
-        # Cross-encoder reranking: score every candidate against the
-        # user's question and keep only the most relevant chunks.
-        chunks = rerank_chunks(state["current_question"], deduped, top_k=7)
+        # Keep top N chunks by cosine similarity (no reranker to save RAM)
+        chunks = deduped[:7]
+        cur.close()
+        conn.close()
 
-    cur.close()
-    conn.close()
+        print(f"DEBUG - Retrieved chunks: {len(chunks)}")
+        print(f"DEBUG - Retrieved disorders: {[c['disorder_name'] for c in chunks]}")
+        state["chunks"] = chunks
+        state["is_general"] = False
 
-    print(f"DEBUG - Retrieved chunks: {len(chunks)}")
-    print(f"DEBUG - Retrieved disorders: {[c['disorder_name'] for c in chunks]}")
-    state["chunks"] = chunks
-    state["is_general"] = False
     return state
 
 # --------------------------------------------------------------------------

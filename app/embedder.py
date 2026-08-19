@@ -66,7 +66,3 @@ def embed_chunks(chunks_path: str, output_path: str):
 if __name__ == "__main__":
     base = Path(__file__).resolve().parent.parent / "data"
     embed_chunks(str(base / "chunks.json"), str(base / "chunks_with_embeddings.json"))
-
-
-
-    
