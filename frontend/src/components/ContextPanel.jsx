@@ -169,16 +169,11 @@ export default function ContextPanel({
 
   return (
     <div className="context-panel" style={{ position: "relative" }}>
-      {/* Panel header */}
-      <div className="context-header">
-        <div>
-          <p className="context-eyebrow">Session settings</p>
-          <h3 className="context-title">Personal context</h3>
-        </div>
-        <button className="btn-close-context" onClick={onClose}>✕</button>
-      </div>
+      {/* Header */}
+      <div className="context-panel-header">
+        <p className="context-panel-title">Your context</p>
+        <button className="context-panel-close" onClick={onClose} title="Close">✕</button>
 
-      <div className="context-body">
         {/* Tab switcher */}
         <div className="context-tabs">
           <button
@@ -194,48 +189,57 @@ export default function ContextPanel({
             Grief workbook
           </button>
         </div>
+      </div>
 
+      {/* Body with auto scroll */}
+      <div className="context-panel-body">
         {/* ── Clinical context tab ── */}
         {tab === "clinical" && (
           <>
-            <div className="field">
-              <label>Feature mode</label>
-              <select value={featureMode} onChange={(e) => setFeatureMode(e.target.value)}>
-                <option value="clinical_support">Clinical mental health support</option>
-                <option value="grief_workbook">Grief & loss workbook</option>
-              </select>
-            </div>
+            <p className="context-optional-note">
+              All fields are optional. Sharing what you're comfortable with helps us provide more relevant support.
+            </p>
 
             <div className="field">
-              <label>Your role</label>
+              <label>I am the</label>
               <select value={userRole} onChange={(e) => setUserRole(e.target.value)}>
-                <option value="caregiver">I care for someone else</option>
-                <option value="individual">I am experiencing this myself</option>
+                <option value="caregiver">A caregiver or family member</option>
+                <option value="individual">The person experiencing symptoms</option>
               </select>
             </div>
 
             <div className="field">
-              <label>Diagnosis status</label>
+              <label>My relationship to them</label>
+              <input
+                type="text"
+                value={relationship}
+                onChange={(e) => setRelationship(e.target.value)}
+                placeholder="e.g. spouse, sibling, parent…"
+              />
+            </div>
+
+            <div className="field">
+              <label>Current situation</label>
               <select value={diagnosisStatus} onChange={(e) => setDiagnosisStatus(e.target.value)}>
-                <option value="formal_diagnosis">Formal diagnosis received</option>
-                <option value="suspected">Suspected / no diagnosis yet</option>
-                <option value="unknown">Not sure</option>
+                <option value="unknown">Not yet diagnosed</option>
+                <option value="suspected">Symptoms present, seeking help</option>
+                <option value="formal_diagnosis">Diagnosis already confirmed</option>
               </select>
             </div>
 
             <div className="field">
-              <label>Reported symptoms (optional)</label>
+              <label>Symptoms noticed (optional)</label>
               <input
                 type="text"
                 value={reportedSymptoms}
                 onChange={(e) => setReportedSymptoms(e.target.value)}
-                placeholder="e.g. low mood, trouble sleeping, racing thoughts…"
+                placeholder="Describe what you've observed, in your own words…"
               />
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <div className="field">
-                <label>Duration</label>
+                <label>How long (approx.)</label>
                 <select value={durationMonths} onChange={(e) => setDurationMonths(Number(e.target.value))}>
                   <option value={1}>About 1 month</option>
                   <option value={3}>About 3 months</option>
@@ -250,16 +254,6 @@ export default function ContextPanel({
                   <option value="yes">Yes</option>
                 </select>
               </div>
-            </div>
-
-            <div className="field">
-              <label>Relationship (if caregiver)</label>
-              <input
-                type="text"
-                value={relationship}
-                onChange={(e) => setRelationship(e.target.value)}
-                placeholder="e.g. my son, my mother, my spouse…"
-              />
             </div>
           </>
         )}
@@ -362,7 +356,7 @@ export default function ContextPanel({
               )}
 
               {/* Action buttons when a saved reflection exists */}
-              {hasSavedEntry && calendarText.trim() && (
+              {(hasSavedEntry || calendarText.trim()) && (
                 <>
                   {showDeleteConfirm ? (
                     <div className="delete-confirm-box">
@@ -391,6 +385,7 @@ export default function ContextPanel({
                       <button
                         className="btn-open-conversation"
                         onClick={handleOpenConversationClick}
+                        disabled={!calendarText.trim()}
                         title={
                           currentEntry?.session_id
                             ? "Continue conversation in existing chat"
@@ -399,13 +394,15 @@ export default function ContextPanel({
                       >
                         <span>💬</span> Open Conversation
                       </button>
-                      <button
-                        className="btn-delete-reflection"
-                        onClick={() => setShowDeleteConfirm(true)}
-                        title="Delete reflection and remove from memory"
-                      >
-                        <span>🗑️</span> Delete
-                      </button>
+                      {hasSavedEntry && (
+                        <button
+                          className="btn-delete-reflection"
+                          onClick={() => setShowDeleteConfirm(true)}
+                          title="Delete reflection and remove from memory"
+                        >
+                          <span>🗑️</span> Delete
+                        </button>
+                      )}
                     </div>
                   )}
                 </>
