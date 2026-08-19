@@ -16,12 +16,20 @@ from sentence_transformers import SentenceTransformer
 EMBEDDING_MODEL = "BAAI/bge-base-en-v1.5"
 BATCH_SIZE = 50
 
-_model = SentenceTransformer(EMBEDDING_MODEL)
+_model = None  # Lazy-loaded on first use to avoid boot-time RAM spike
+
+
+def _get_model():
+    global _model
+    if _model is None:
+        _model = SentenceTransformer(EMBEDDING_MODEL)
+    return _model
 
 
 def embed_batch(texts: list):
     """Embeds a batch of texts locally, returns list of embedding vectors."""
-    embeddings = _model.encode(texts, normalize_embeddings=True, show_progress_bar=False)
+    model = _get_model()
+    embeddings = model.encode(texts, normalize_embeddings=True, show_progress_bar=False)
     return embeddings.tolist()
 
 
