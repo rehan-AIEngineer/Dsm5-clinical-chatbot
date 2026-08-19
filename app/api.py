@@ -10,7 +10,7 @@ from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from app.graph import build_graph, analyze_query, retrieve
+# graph.py (heavy ML models) imported lazily to avoid OOM kill at startup
 from app.chat_memory import (
     add_message,
     get_history,
@@ -46,7 +46,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-rag_app = build_graph()
+_rag_app = None  # Lazy-built on first request
+
+
+def _get_rag_app():
+    global _rag_app
+    if _rag_app is None:
+        from app.graph import build_graph
+        _rag_app = build_graph()
+    return _rag_app
 
 FALLBACK_ANSWER = (
     "I'm having trouble processing your question right now (technical issue). "
@@ -83,6 +91,7 @@ class RenameRequest(BaseModel):
 
 def _build_rag_state(query: str):
     """Added for streaming: reuse the same retrieval path without changing the old /chat endpoint."""
+    from app.graph import analyze_query, retrieve
     state = {
         "query": query,
         "current_question": query,
@@ -135,7 +144,7 @@ def chat(request: ChatRequest, user = Depends(verify_token)):
         set_title_if_unset(request.session_id, auto_title, user_id=user.id)
 
     try:
-        result = rag_app.invoke({
+        result = _get_rag_app().invoke({
             "query": full_query,
             "current_question": request.message,
             "disorders": [],
