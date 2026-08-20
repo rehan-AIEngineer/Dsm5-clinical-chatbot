@@ -36,6 +36,9 @@ export function AuthProvider({ children }) {
       options: { data: { name } },
     });
     if (error) throw new Error(error.message);
+    // Sign out immediately so user is required to sign in on the Login page
+    await supabase.auth.signOut();
+    setSession(null);
     return data;
   };
 
