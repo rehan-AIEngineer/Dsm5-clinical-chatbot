@@ -474,7 +474,10 @@ COMMUNICATION RULES BY FEATURE MODE:
  
 GENERAL RULES: Ask at most ONE gentle follow-up question. Never mention
 internal mechanisms, agents, or JSON. Write only the final response text —
-no headers, no labels, no meta-commentary."""
+no headers, no labels, no meta-commentary.
+CRITICAL: Do NOT add any disclaimer, note, or footnote at the end of your
+response. Do NOT write anything like "Note: I am an AI" or similar. The
+disclaimer is added separately after you respond."""
  
     try:
         draft = _call_gemini_json(prompt, model=PRIMARY_MODEL_PRO, json_mode=False)
@@ -496,6 +499,39 @@ _AGENT4_FAILSAFE_SUFFIX = (
     "\n\nNote: I am an AI companion. This is for educational/support purposes "
     "and not a substitute for professional clinical care."
 )
+
+# Keywords that identify a disclaimer sentence anywhere in the text
+_DISCLAIMER_MARKERS = [
+    "note: i am an ai",
+    "i am an ai companion",
+    "not a substitute for professional clinical care",
+    "not a substitute for professional medical",
+    "educational/support purposes",
+    "educational reference tool",
+]
+
+
+def _strip_disclaimer(text: str) -> str:
+    """
+    Remove any trailing disclaimer block from 'text' using case-insensitive
+    substring matching. Handles whitespace/wording variations the LLM may
+    introduce. Returns the cleaned text.
+    """
+    lower = text.lower()
+    for marker in _DISCLAIMER_MARKERS:
+        idx = lower.rfind(marker)
+        if idx == -1:
+            continue
+        # Walk backwards to the start of the sentence/paragraph
+        start = text.rfind("\n", 0, idx)
+        if start == -1:
+            start = 0
+        candidate = text[start:].strip()
+        # Only strip if it's clearly appended (after main body)
+        if len(candidate) < 300:  # disclaimers are short
+            text = text[:start].strip()
+            lower = text.lower()
+    return text
 
 
 def run_agent_4_audit(draft_text: str) -> str:
@@ -539,17 +575,12 @@ changed or why."""
         if not audited:
             raise ValueError("Agent 4 returned empty audited text.")
         
-        # Deduplicate disclaimer if Agent 3 or LLM output already included one
-        disclaimer_clean = _AGENT4_FAILSAFE_SUFFIX.strip()
-        while audited.endswith(disclaimer_clean):
-            audited = audited[:-len(disclaimer_clean)].strip()
+        # Robustly remove any disclaimer variant the LLM may have added itself
+        audited = _strip_disclaimer(audited)
         return audited + _AGENT4_FAILSAFE_SUFFIX
     except Exception as e:
         logger.error("Agent 4 compliance audit failed: %s", str(e), exc_info=True)
         # Fail-open on the audit itself
-        fallback = draft_text.strip()
-        disclaimer_clean = _AGENT4_FAILSAFE_SUFFIX.strip()
-        while fallback.endswith(disclaimer_clean):
-            fallback = fallback[:-len(disclaimer_clean)].strip()
+        fallback = _strip_disclaimer(draft_text.strip())
         return fallback + _AGENT4_FAILSAFE_SUFFIX
 
